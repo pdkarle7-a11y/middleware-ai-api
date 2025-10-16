@@ -1,39 +1,48 @@
 import os
 import requests
 
-
-# Vercel expects a top-level callable named `handler`
 def handler(request):
-    target = os.getenv("TARGET_URL")
-
-    if not target:
-        return {
-            "statusCode": 500,
-            "headers": {"content-type": "text/plain"},
-            "body": "TARGET_URL not configured",
-        }
-
-    if request.method != "POST":
-        return {
-            "statusCode": 405,
-            "headers": {"Allow": "POST", "content-type": "text/plain"},
-            "body": "Only POST allowed",
-        }
+    print("🔹 Function started")
 
     try:
+        target = os.getenv("TARGET_URL")
+        print("🔹 TARGET_URL:", target)
+
+        if not target:
+            return {
+                "statusCode": 500,
+                "headers": {"content-type": "text/plain"},
+                "body": "TARGET_URL not configured",
+            }
+
+        print("🔹 Method:", request.method)
+
+        if request.method != "POST":
+            return {
+                "statusCode": 405,
+                "headers": {"Allow": "POST", "content-type": "text/plain"},
+                "body": "Only POST allowed",
+            }
+
+        # Some Vercel request objects don’t have get_data()
+        data = getattr(request, "body", None)
+        print("🔹 Raw body:", data)
+        if data is None and hasattr(request, "get_data"):
+            data = request.get_data()
+
         headers = {
             k: v
             for k, v in request.headers.items()
             if k.lower() not in ("host", "content-length", "connection")
         }
 
-        data = getattr(request, "body", None)
-        if data is None and hasattr(request, "get_data"):
-            data = request.get_data()
+        print("🔹 Forwarding to target:", target)
 
         resp = requests.post(
             target, headers=headers, params=request.args, data=data, timeout=9
         )
+
+        print("🔹 Got response:", resp.status_code)
 
         return {
             "statusCode": resp.status_code,
@@ -44,7 +53,7 @@ def handler(request):
         }
 
     except Exception as e:
-        print("❌ proxy error:", e)
+        print("❌ Proxy error:", repr(e))
         return {
             "statusCode": 502,
             "headers": {"content-type": "text/plain"},
