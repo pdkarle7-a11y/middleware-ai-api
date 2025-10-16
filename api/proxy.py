@@ -7,28 +7,33 @@ def handler(request):
     if not TARGET_URL:
         return {"statusCode": 500, "body": "TARGET_URL not configured"}
 
-    # Rebuild the request headers (except a few hop-by-hop ones)
-    forward_headers = {k: v for k, v in request.headers.items()
-                       if k.lower() not in ("host", "content-length", "connection")}
+    # Allow only POST requests
+    if request.method != "POST":
+        return {
+            "statusCode": 405,
+            "headers": {"Allow": "POST"},
+            "body": "Only POST requests are allowed."
+        }
+
+    # Copy incoming headers except hop-by-hop ones
+    forward_headers = {
+        k: v for k, v in request.headers.items()
+        if k.lower() not in ("host", "content-length", "connection", "accept-encoding")
+    }
 
     try:
-        # Prepare request body if any
-        data = None
-        if request.method not in ("GET", "HEAD"):
-            # raw body for binary or JSON
-            data = request.get_data() if hasattr(request, "get_data") else request.body
+        # Forward the POST body exactly as received
+        data = request.get_data() if hasattr(request, "get_data") else getattr(request, "body", None)
 
-        # Forward the request
-        resp = requests.request(
-            method=request.method,
-            url=TARGET_URL,
+        resp = requests.post(
+            TARGET_URL,
             headers=forward_headers,
-            params=request.args,      # forward query parameters
+            params=request.args,   # forward query params if any
             data=data,
-            timeout=9,                # <= 10s limit on free plan
+            timeout=9,             # stay under Vercel 10s limit
         )
 
-        # Return the upstream response as-is
+        # Forward the exact upstream response back to client
         return {
             "statusCode": resp.status_code,
             "headers": dict(resp.headers),
